@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth, signIn } from "@/auth";
-import { accessFor, authConfigured } from "@/lib/access";
+import { accessFor, authConfigured, missingAuthVars } from "@/lib/access";
 import { t } from "@/lib/i18n/es";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </button>
         </form>
       ) : (
-        <p className="mt-8 text-sm text-warn">El acceso todavía no está configurado.</p>
+        <div className="mt-8 text-sm text-warn">
+          <p>El acceso todavía no está configurado. Faltan estas variables de entorno:</p>
+          <p className="mt-2 font-mono">{missingAuthVars().join(", ")}</p>
+        </div>
       )}
     </main>
   );

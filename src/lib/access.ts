@@ -10,6 +10,13 @@ export function allowedEmails(raw = process.env.ALLOWED_EMAILS): string[] {
     .filter(Boolean);
 }
 
+/** Nombres (nunca valores) de las variables de acceso que faltan. */
+export function missingAuthVars(env: Record<string, string | undefined> = process.env): string[] {
+  const missing = ["AUTH_SECRET", "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET"].filter((k) => !env[k]?.trim());
+  if (!allowedEmails(env.ALLOWED_EMAILS).length) missing.push("ALLOWED_EMAILS");
+  return missing;
+}
+
 export function authConfigured(env: Record<string, string | undefined> = process.env): boolean {
   return !!(env.AUTH_SECRET && env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET && allowedEmails(env.ALLOWED_EMAILS).length);
 }
