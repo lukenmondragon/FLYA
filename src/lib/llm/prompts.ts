@@ -7,6 +7,7 @@ export const PARSE_SYSTEM = `Eres el intérprete de un buscador de vuelos. Convi
 Reglas:
 - origins/destinations: lugares tal y como los nombra el usuario. Pon "country" (ISO2) si se sabe. Pon "iata" solo si es seguro (p. ej. "Tokio" → ["TYO"], "Narita" → ["NRT"], "CDMX" → ["MEX"]). Para pueblos sin aeropuerto (p. ej. Getaria) da lat/lon aproximadas y deja iata vacío.
 - Si el usuario dice que puede desplazarse a otro aeropuerto ("puedo ir al aeropuerto de Biarritz"), añádelo como origen adicional. Si lo menciona como "solo si compensa / si el precio lo permite", márcalo optional=true.
+- Si el lugar es un PAÍS ("a España", "a Japón"), pon el nombre del país, "country" con su ISO2 e "iata" vacío: el sistema elige sus aeropuertos principales.
 - "a cualquier parte de X" = destino X (todos sus aeropuertos). "a cualquier sitio cálido" = destination_mode "anywhere" con destination_tags (calido, playa, nieve, ciudad, europa, caribe).
 - Fechas: "en marzo" → departure_month con el AÑO de la próxima ocurrencia a partir de HOY. "del 3 al 10" → departure_date y return_date. "flexible"/"±N días" → flex_days (por defecto 0, "flexible" = 3). "fines de semana largos" → long_weekends=true. "una semana" → stay 6-8 días.
 - Por defecto: roundtrip, 1 adulto, priorities ["price"], nearby_origins=true, radius_km=300, allow_foreign_origins=true, nearby_destinations=false.

@@ -293,7 +293,12 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
     if (!oc || !dc) continue;
     const originTransfer = transfer(oc.place, oc.iata);
     const destCenter = findMetroByAirport(dc.iata) ?? (dc.place.metro ? dc.place.metro : undefined);
-    const destPlace = destCenter ? { label: destCenter.name, lat: destCenter.lat, lon: destCenter.lon, country: destCenter.country } : dc.place;
+    // Destino "país": el traslado se calcula a la ciudad del propio aeropuerto, no al centro del país.
+    const destPlace = destCenter
+      ? { label: destCenter.name, lat: destCenter.lat, lon: destCenter.lon, country: destCenter.country }
+      : dc.place.via === "country"
+        ? { label: dc.city || dc.iata, lat: dc.lat, lon: dc.lon, country: dc.country }
+        : dc.place;
     const destinationTransfer = transfer(destPlace, dc.iata);
     const traps = detectTraps(o, { fromUsd, destinationTransfer, wantsBaggage: q.constraints.baggageIncluded, passengers: pax });
     const transfers = (originTransfer?.cost ?? 0) * (o.inbound ? 2 : 1) + (destinationTransfer?.cost ?? 0) * (o.inbound ? 2 : 1);

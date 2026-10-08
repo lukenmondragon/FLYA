@@ -34,6 +34,15 @@ describe("motor de búsqueda (mock)", () => {
     expect(m2.cacheHits).toBeGreaterThan(0);
   });
 
+  it("destino país: Ciudad de México → España", async () => {
+    const q = parseWithRules("desde ciudad de mexico a españa ida y vuelta en diciembre", { now }).query;
+    const out = await runSearch(q, newMetrics());
+    expect(out.destinations.map((d) => d.iata)).toEqual(expect.arrayContaining(["MAD", "BCN"]));
+    expect(out.primary.length).toBeGreaterThan(0);
+    // El traslado al llegar se calcula a la ciudad del aeropuerto, no al centro del país.
+    for (const o of out.primary) expect(o.destinationTransfer!.distanceKm).toBeLessThan(80);
+  });
+
   it("refinamiento 'solo directos' filtra escalas", async () => {
     const base = parseWithRules("desde Madrid a Barcelona en noviembre", { now }).query;
     const q = parseWithRules("ahora solo directos", { now, previous: base }).query;

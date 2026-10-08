@@ -35,6 +35,14 @@ describe("resolución de lugares", () => {
     const r = resolvePlace({ name: "Pueblo Inventado", lat: 43.3, lon: -2.2, country: "ES" })!;
     expect(r.via).toBe("llm_coords");
   });
+  it("países → aeropuertos principales (y no un pueblo homónimo)", () => {
+    const es = resolvePlace({ name: "España" })!;
+    expect(es.via).toBe("country");
+    expect(es.country).toBe("ES");
+    expect(es.airports).toEqual(expect.arrayContaining(["MAD", "BCN"]));
+    expect(resolvePlace({ name: "Japón" })!.airports).toContain("HND");
+    expect(resolvePlace({ name: "spain" })!.country).toBe("ES");
+  });
   it("lugar desconocido → undefined", () => {
     expect(resolvePlace({ name: "Xyzzyplatz" })).toBeUndefined();
   });

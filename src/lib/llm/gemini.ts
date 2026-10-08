@@ -3,6 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { z } from "zod";
 import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
 import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
+import { log } from "../log";
 import { userParseMessage, type LLMProvider, type LlmUsage, type ParseInput } from "./types";
 
 // Precio orientativo de pago de Gemini Flash (USD / millón de tokens). En el plan gratuito el coste es 0.
@@ -20,6 +21,18 @@ export class GeminiLLM implements LLMProvider {
   }
 
   private async call(system: string, user: string, schema: z.ZodType): Promise<{ json: unknown; usage: LlmUsage }> {
+    const jsonSchema = toGeminiSchema(z.toJSONSchema(schema));
+    try {
+      return await this.generate(system, user, jsonSchema);
+    } catch (e) {
+      // Si el modelo rechaza el esquema, se repite en modo JSON con el esquema en las instrucciones.
+      // La salida se valida igualmente con Zod.
+      log.warn("Gemini: reintento sin esquema estructurado", { error: String(e).slice(0, 300) });
+      return this.generate(`${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user);
+    }
+  }
+
+  private async generate(system: string, user: string, jsonSchema?: unknown): Promise<{ json: unknown; usage: LlmUsage }> {
     const res = await this.ai.models.generateContent({
       model: this.model,
       contents: user,
@@ -27,7 +40,7 @@ export class GeminiLLM implements LLMProvider {
         // Gemini aplica caché implícita a prefijos repetidos (el system prompt es estable).
         systemInstruction: system,
         responseMimeType: "application/json",
-        responseJsonSchema: z.toJSONSchema(schema),
+        ...(jsonSchema ? { responseJsonSchema: jsonSchema } : {}),
         temperature: 0.1,
         thinkingConfig: { thinkingBudget: 0 },
         abortSignal: AbortSignal.timeout(20_000),
@@ -40,7 +53,7 @@ export class GeminiLLM implements LLMProvider {
     const input = u?.promptTokenCount ?? 0;
     const output = u?.candidatesTokenCount ?? 0;
     return {
-      json: JSON.parse(text),
+      json: JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, "")),
       usage: { inputTokens: input, outputTokens: output, cachedTokens: cached, costUsd: ((input - cached) * PRICE.input + cached * PRICE.cached + output * PRICE.output) / 1e6 },
     };
   }
@@ -55,4 +68,26 @@ export class GeminiLLM implements LLMProvider {
     const { json, usage } = await this.call(EXPLAIN_SYSTEM, user, LlmExplainSchema);
     return { data: LlmExplainSchema.parse(json), usage };
   }
+}
+
+/**
+ * Adapta el JSON Schema de Zod al subconjunto que acepta Gemini:
+ * sin "$schema" ni "additionalProperties", y los tipos ["x", "null"] como anyOf.
+ */
+export function toGeminiSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(toGeminiSchema);
+  if (!node || typeof node !== "object") return node;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+    if (k === "$schema" || k === "additionalProperties") continue;
+    out[k] = toGeminiSchema(v);
+  }
+  if (Array.isArray(out.type)) {
+    const types = out.type as string[];
+    delete out.type;
+    const rest = { ...out };
+    for (const k of Object.keys(out)) delete out[k];
+    out.anyOf = types.map((t) => (t === "null" ? { type: "null" } : { ...rest, type: t }));
+  }
+  return out;
 }

@@ -1,5 +1,5 @@
 import type { PlaceRef } from "../schema/query";
-import { getAirport, getAirports, getCountry, getPlaces, type Airport } from "./data";
+import { getAirport, getAirports, getCountries, getCountry, getPlaces, type Airport } from "./data";
 import { haversineKm } from "./distance";
 import { COUNTRY_ALIASES, findMetro, PLACE_ALIASES, type Metro } from "./metros";
 import { normalize } from "../util/text";
@@ -14,7 +14,7 @@ export interface ResolvedPlace {
   airports: string[];
   metro?: Metro;
   /** Cómo se resolvió (para depurar y mostrar supuestos). */
-  via: "iata" | "metro" | "airport_city" | "gazetteer" | "llm_coords";
+  via: "iata" | "metro" | "country" | "airport_city" | "gazetteer" | "llm_coords";
   optional: boolean;
 }
 
@@ -57,7 +57,8 @@ function fromAirports(codes: string[], ref: PlaceRef, via: ResolvedPlace["via"])
 }
 
 function localAirports(lat: number, lon: number): string[] {
-  const near = airportsNear(lat, lon, LOCAL_AIRPORT_KM);
+  // Si no hay ninguno muy cerca, el más próximo en un radio mayor (pueblos alejados).
+  const near = airportsNear(lat, lon, LOCAL_AIRPORT_KM).length ? airportsNear(lat, lon, LOCAL_AIRPORT_KM) : airportsNear(lat, lon, 150).slice(0, 1);
   const large = near.filter((x) => x.airport.size === "L");
   return (large.length ? large : near).slice(0, 3).map((x) => x.airport.iata);
 }
@@ -91,7 +92,15 @@ export function resolvePlace(ref: PlaceRef): ResolvedPlace | undefined {
     return { label: metro.name, lat: metro.lat, lon: metro.lon, country: metro.country, airports: metro.airports, metro, via: "metro", optional };
   }
 
-  // 3. Nombre de aeropuerto o de su municipio ("aeropuerto de Biarritz").
+  // 3. Países ("a España", "a Japón"): sus aeropuertos principales.
+  const cc = countryFromName(name);
+  if (cc) {
+    const codes = mainAirportsOf(cc);
+    const first = codes.length ? getAirport(codes[0]!) : undefined;
+    if (first) return { label: getCountry(cc)?.es ?? raw, lat: first.lat, lon: first.lon, country: cc, airports: codes, via: "country", optional };
+  }
+
+  // 4. Nombre de aeropuerto o de su municipio ("aeropuerto de Biarritz").
   const alias = PLACE_ALIASES[name];
   const target = alias ? normalize(alias.name) : name;
   const country = hint ?? alias?.country;
@@ -107,14 +116,14 @@ export function resolvePlace(ref: PlaceRef): ResolvedPlace | undefined {
     return { label: raw.replace(/\([^)]*\)/g, "").trim(), lat: first.lat, lon: first.lon, country: first.country, airports: sorted.slice(0, 3).map((a) => a.iata), via: "airport_city", optional };
   }
 
-  // 4. Gazetteer (GeoNames): municipios pequeños como Getaria.
+  // 5. Gazetteer (GeoNames): municipios pequeños como Getaria.
   const candidates = getPlaces().filter((p) => (!country || p.country === country) && normalize(p.name) === target);
   if (candidates.length) {
     const best = candidates.reduce((a, b) => (b.population > a.population ? b : a));
     return { label: raw.replace(/\([^)]*\)/g, "").trim(), lat: best.lat, lon: best.lon, country: best.country, airports: localAirports(best.lat, best.lon), via: "gazetteer", optional };
   }
 
-  // 5. Coordenadas aportadas por el LLM (marcadas como aproximadas).
+  // 6. Coordenadas aportadas por el LLM (marcadas como aproximadas).
   if (ref.lat !== undefined && ref.lon !== undefined) {
     const cc = country ?? ref.country ?? nearestCountry(ref.lat, ref.lon);
     return { label: raw, lat: ref.lat, lon: ref.lon, country: cc, airports: localAirports(ref.lat, ref.lon), via: "llm_coords", optional };
@@ -125,6 +134,61 @@ export function resolvePlace(ref: PlaceRef): ResolvedPlace | undefined {
 function nearestCountry(lat: number, lon: number): string {
   const near = airportsNear(lat, lon, 500);
   return near[0]?.airport.country ?? "US";
+}
+
+/** Aeropuertos principales por país (los grandes con más rutas internacionales). */
+const MAIN_AIRPORTS: Record<string, string[]> = {
+  ES: ["MAD", "BCN", "AGP", "PMI", "VLC", "BIO"],
+  MX: ["MEX", "CUN", "GDL", "MTY", "SJD", "PVR"],
+  US: ["JFK", "LAX", "MIA", "ORD", "SFO", "IAH"],
+  FR: ["CDG", "ORY", "NCE", "LYS", "MRS"],
+  IT: ["FCO", "MXP", "VCE", "NAP", "BLQ"],
+  GB: ["LHR", "LGW", "MAN", "STN", "EDI"],
+  DE: ["FRA", "MUC", "BER", "DUS", "HAM"],
+  PT: ["LIS", "OPO", "FAO"],
+  JP: ["HND", "NRT", "KIX"],
+  CN: ["PEK", "PVG", "CAN"],
+  KR: ["ICN"],
+  TH: ["BKK", "HKT"],
+  NL: ["AMS"],
+  BE: ["BRU"],
+  CH: ["ZRH", "GVA"],
+  AT: ["VIE"],
+  GR: ["ATH", "HER", "JTR"],
+  TR: ["IST", "SAW", "AYT"],
+  IE: ["DUB"],
+  CA: ["YYZ", "YVR", "YUL"],
+  BR: ["GRU", "GIG", "BSB"],
+  AR: ["EZE", "AEP"],
+  CO: ["BOG", "MDE", "CTG"],
+  PE: ["LIM", "CUZ"],
+  CL: ["SCL"],
+  CU: ["HAV", "VRA"],
+  DO: ["PUJ", "SDQ"],
+  CR: ["SJO", "LIR"],
+  MA: ["RAK", "CMN"],
+  EG: ["CAI", "HRG"],
+  AE: ["DXB", "AUH"],
+  IN: ["DEL", "BOM"],
+  AU: ["SYD", "MEL"],
+};
+
+/** "españa", "spain", "japón" → ISO2, usando alias y los nombres del dataset de países. */
+export function countryFromName(normalizedName: string): string | undefined {
+  if (COUNTRY_ALIASES[normalizedName]) return COUNTRY_ALIASES[normalizedName];
+  for (const [cc, c] of Object.entries(getCountries())) {
+    if (normalize(c.es) === normalizedName || normalize(c.en) === normalizedName) return cc;
+  }
+  return undefined;
+}
+
+export function mainAirportsOf(cc: string): string[] {
+  const curated = MAIN_AIRPORTS[cc]?.filter((c) => getAirport(c));
+  if (curated?.length) return curated;
+  return getAirports()
+    .filter((a) => a.country === cc && a.scheduled && a.size === "L")
+    .slice(0, 5)
+    .map((a) => a.iata);
 }
 
 export function countryName(cc: string): string {
