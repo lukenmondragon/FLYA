@@ -4,11 +4,17 @@ import { z } from "zod";
 import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
 import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
 import { log } from "../log";
-import { withRetry } from "../util/async";
 import { userParseMessage, type LLMProvider, type LlmUsage, type ParseInput } from "./types";
 
 // Precio orientativo de pago de Gemini Flash (USD / millón de tokens). En el plan gratuito el coste es 0.
 const PRICE = { input: 0.3, output: 2.5, cached: 0.075 };
+
+/** Errores que justifican probar otro modelo: saturación, cuota o modelo no disponible. */
+const SWITCH_MODEL = /"code":\s*(404|429|503)|UNAVAILABLE|RESOURCE_EXHAUSTED|NOT_FOUND/;
+const SCHEMA_REJECTED = /"code":\s*400|INVALID_ARGUMENT/;
+
+/** Modelo que respondió bien hace poco: se prueba primero (compartido entre peticiones de la misma instancia). */
+let preferred: { model: string; until: number } | undefined;
 
 export class GeminiLLM implements LLMProvider {
   readonly id = "gemini" as const;
@@ -17,31 +23,52 @@ export class GeminiLLM implements LLMProvider {
   constructor(
     apiKey: string,
     readonly model: string,
+    private fallbacks: string[] = [],
   ) {
     this.ai = new GoogleGenAI({ apiKey });
   }
 
+  /** Prueba el modelo configurado y, si está saturado o no disponible, los de respaldo. */
   private async call(system: string, user: string, schema: z.ZodType): Promise<{ json: unknown; usage: LlmUsage }> {
     const jsonSchema = toGeminiSchema(z.toJSONSchema(schema));
+    const all = [...new Set([this.model, ...this.fallbacks])];
+    const models = preferred && preferred.until > Date.now() && all.includes(preferred.model) ? [preferred.model, ...all.filter((m) => m !== preferred!.model)] : all;
+    const started = Date.now();
+    let lastError: unknown;
+    for (const model of models) {
+      if (Date.now() - started > 25_000) break; // no superar el tiempo máximo de la petición
+      try {
+        const out = await this.withSchemaFallback(model, system, user, jsonSchema);
+        if (model !== this.model) log.info("Gemini: respondió el modelo de respaldo", { model });
+        preferred = { model, until: Date.now() + 10 * 60_000 };
+        return out;
+      } catch (e) {
+        lastError = e;
+        if (!SWITCH_MODEL.test(String(e))) throw e;
+        log.warn("Gemini: modelo no disponible, pruebo otro", { model, error: String(e).slice(0, 200) });
+      }
+    }
+    throw lastError ?? new Error("Ningún modelo de Gemini disponible");
+  }
+
+  private async withSchemaFallback(model: string, system: string, user: string, jsonSchema: unknown) {
     try {
-      return await this.generate(system, user, jsonSchema);
+      return await this.generate(model, system, user, jsonSchema);
     } catch (e) {
-      // Solo se reintenta si el modelo rechaza la petición (400); un timeout o un 5xx se repetirían igual.
-      if (!/"code":\s*400|INVALID_ARGUMENT/.test(String(e))) throw e;
+      if (!SCHEMA_REJECTED.test(String(e))) throw e;
       // Si el modelo rechaza el esquema, se repite en modo JSON con el esquema en las instrucciones.
       // La salida se valida igualmente con Zod.
-      log.warn("Gemini: reintento sin esquema estructurado", { error: String(e).slice(0, 300) });
-      return this.generate(`${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user);
+      log.warn("Gemini: reintento sin esquema estructurado", { model, error: String(e).slice(0, 300) });
+      return this.generate(model, `${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user);
     }
   }
 
-  private async generate(system: string, user: string, jsonSchema?: unknown): Promise<{ json: unknown; usage: LlmUsage }> {
+  private async generate(model: string, system: string, user: string, jsonSchema?: unknown): Promise<{ json: unknown; usage: LlmUsage }> {
     // Extracción sencilla: poco razonamiento (más rápido y barato). Gemini 2.x usa presupuesto; 3.x, nivel.
     // Sin este ajuste, Gemini 3 razona a fondo y tarda más de lo aceptable.
-    const thinkingConfig = this.model.startsWith("gemini-2") ? { thinkingBudget: 0 } : { thinkingLevel: ThinkingLevel.LOW };
-    // Un reintento ante saturación temporal del modelo (429/503).
-    const res = await withRetry(() => this.ai.models.generateContent({
-      model: this.model,
+    const thinkingConfig = model.startsWith("gemini-2") ? { thinkingBudget: 0 } : { thinkingLevel: ThinkingLevel.LOW };
+    const res = await this.ai.models.generateContent({
+      model,
       contents: user,
       config: {
         // Gemini aplica caché implícita a prefijos repetidos (el system prompt es estable).
@@ -50,9 +77,9 @@ export class GeminiLLM implements LLMProvider {
         ...(jsonSchema ? { responseJsonSchema: jsonSchema } : {}),
         temperature: 0.1,
         thinkingConfig,
-        abortSignal: AbortSignal.timeout(12_000),
+        abortSignal: AbortSignal.timeout(18_000),
       },
-    }), { retries: 1, baseMs: 600, isRetryable: (e) => /"code":\s*(429|503)|UNAVAILABLE|RESOURCE_EXHAUSTED/.test(String(e)) });
+    });
     const text = res.text;
     if (!text) throw new Error("Respuesta vacía de Gemini");
     const u = res.usageMetadata;

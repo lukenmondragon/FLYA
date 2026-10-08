@@ -9,7 +9,7 @@ import { log, newMetrics } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const BodySchema = z.object({
   message: z.string().trim().min(2).max(600),

@@ -14,7 +14,7 @@ export function getLLM(): LLMProvider | undefined {
   const p = e.LLM_PROVIDER;
   if (p === "rules") return undefined;
   if ((p === "anthropic" || p === "auto") && e.ANTHROPIC_API_KEY) return new AnthropicLLM(e.ANTHROPIC_API_KEY, e.ANTHROPIC_MODEL);
-  if ((p === "gemini" || p === "auto") && e.GEMINI_API_KEY) return new GeminiLLM(e.GEMINI_API_KEY, e.GEMINI_MODEL);
+  if ((p === "gemini" || p === "auto") && e.GEMINI_API_KEY) return new GeminiLLM(e.GEMINI_API_KEY, e.GEMINI_MODEL, e.GEMINI_FALLBACK_MODELS.split(",").map((m) => m.trim()).filter(Boolean));
   return undefined;
 }
 

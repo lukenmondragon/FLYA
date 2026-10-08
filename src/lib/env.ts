@@ -15,6 +15,8 @@ const EnvSchema = z.object({
   ANTHROPIC_MODEL: z.string().default("claude-haiku-5-5"),
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.8-flash"),
+  /** Modelos de respaldo (separados por comas) si el principal está saturado o no disponible. */
+  GEMINI_FALLBACK_MODELS: z.string().default("gemini-3.5-flash,gemini-3.5-flash-lite"),
 
   DATABASE_URL: z.string().default("file:.data/vuelos.db"),
 
