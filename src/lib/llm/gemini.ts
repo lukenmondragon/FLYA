@@ -4,6 +4,7 @@ import { z } from "zod";
 import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
 import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
 import { log } from "../log";
+import { withRetry } from "../util/async";
 import { userParseMessage, type LLMProvider, type LlmUsage, type ParseInput } from "./types";
 
 // Precio orientativo de pago de Gemini Flash (USD / millón de tokens). En el plan gratuito el coste es 0.
@@ -25,17 +26,21 @@ export class GeminiLLM implements LLMProvider {
     try {
       return await this.generate(system, user, jsonSchema);
     } catch (e) {
+      // Solo se reintenta si el modelo rechaza la petición (400); un timeout o un 5xx se repetirían igual.
+      if (!/"code":\s*400|INVALID_ARGUMENT/.test(String(e))) throw e;
       // Si el modelo rechaza el esquema, se repite en modo JSON con el esquema en las instrucciones.
       // La salida se valida igualmente con Zod.
       log.warn("Gemini: reintento sin esquema estructurado", { error: String(e).slice(0, 300) });
-      return this.generate(`${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user, undefined, false);
+      return this.generate(`${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user);
     }
   }
 
-  private async generate(system: string, user: string, jsonSchema?: unknown, tuneThinking = true): Promise<{ json: unknown; usage: LlmUsage }> {
-    // Extracción sencilla: el mínimo razonamiento posible. Gemini 2.x usa presupuesto; 3.x, nivel.
-    const thinkingConfig = !tuneThinking ? undefined : this.model.startsWith("gemini-2") ? { thinkingBudget: 0 } : { thinkingLevel: ThinkingLevel.MINIMAL };
-    const res = await this.ai.models.generateContent({
+  private async generate(system: string, user: string, jsonSchema?: unknown): Promise<{ json: unknown; usage: LlmUsage }> {
+    // Extracción sencilla: poco razonamiento (más rápido y barato). Gemini 2.x usa presupuesto; 3.x, nivel.
+    // Sin este ajuste, Gemini 3 razona a fondo y tarda más de lo aceptable.
+    const thinkingConfig = this.model.startsWith("gemini-2") ? { thinkingBudget: 0 } : { thinkingLevel: ThinkingLevel.LOW };
+    // Un reintento ante saturación temporal del modelo (429/503).
+    const res = await withRetry(() => this.ai.models.generateContent({
       model: this.model,
       contents: user,
       config: {
@@ -44,10 +49,10 @@ export class GeminiLLM implements LLMProvider {
         responseMimeType: "application/json",
         ...(jsonSchema ? { responseJsonSchema: jsonSchema } : {}),
         temperature: 0.1,
-        ...(thinkingConfig ? { thinkingConfig } : {}),
-        abortSignal: AbortSignal.timeout(20_000),
+        thinkingConfig,
+        abortSignal: AbortSignal.timeout(12_000),
       },
-    });
+    }), { retries: 1, baseMs: 600, isRetryable: (e) => /"code":\s*(429|503)|UNAVAILABLE|RESOURCE_EXHAUSTED/.test(String(e)) });
     const text = res.text;
     if (!text) throw new Error("Respuesta vacía de Gemini");
     const u = res.usageMetadata;
