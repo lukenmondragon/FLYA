@@ -312,12 +312,21 @@ export function parseWithRules(message: string, ctx: RulesContext = {}): ParseRe
     q.stayDays = { min: Math.max(1, days - 1), max: days + 1 };
   }
 
-  // --- Prioridades ---
-  const prios: Priority[] = [];
-  if (/\b(mas rapido|menos horas|mas corto|menor duracion|rapido)\b/.test(n)) prios.push("duration");
-  if (/\b(comodo|comodidad|tranquilo|sin prisas)\b/.test(n)) prios.push("comfort");
-  if (/\b(buen horario|buenos horarios|sin madrugar|no madrugar|horario razonable|de dia)\b/.test(n)) prios.push("schedule");
-  if (/\b(mas barato|barato|economico|precio)\b/.test(n) || prios.length) prios.push("price");
+  // --- Prioridades (en el orden en que se mencionan; "prioriza X" pasa delante) ---
+  const PRIO_RE: [Priority, RegExp][] = [
+    ["duration", /\b(mas rapido|menos horas|mas corto|menor duracion|rapido|rapidez)\b/],
+    ["comfort", /\b(comod[oa]s?|comodidad|tranquil[oa]s?|sin prisas)\b/],
+    ["schedule", /\b(buen horario|buenos horarios|sin madrugar|no madrugar|horario razonable|de dia)\b/],
+    ["price", /\b(mas barat[oa]s?|barat[oa]s?|economic[oa]s?|precio)\b/],
+  ];
+  const found = PRIO_RE.map(([p, re]) => ({ p, i: n.search(re) })).filter((x) => x.i >= 0);
+  const prioritized = n.match(/\b(?:prioriza|priorizar|prioridad|sobre todo|ante todo|lo importante es)\s+(?:lo\s+|el\s+|la\s+)?(\w+)/);
+  if (prioritized) {
+    const hit = PRIO_RE.find(([, re]) => re.test(prioritized[1]!));
+    if (hit) found.push({ p: hit[0], i: -1 });
+  }
+  const prios = [...new Set(found.sort((a, b) => a.i - b.i).map((x) => x.p))];
+  if (prios.length && !prios.includes("price")) prios.push("price");
   if (prios.length) q.priorities = [...new Set([...(q.priorities.includes("airline") ? (["airline"] as Priority[]) : []), ...prios])];
 
   // --- Radio / flexibilidad de aeropuertos ---

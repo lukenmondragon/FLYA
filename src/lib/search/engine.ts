@@ -112,7 +112,21 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
   // 1. Resolver lugares.
   const originPlaces = q.origins.map((o) => ({ ref: o, r: resolvePlace(o) }));
   const unresolved = originPlaces.filter((x) => !x.r).map((x) => x.ref.name);
-  const origins = originPlaces.map((x) => x.r).filter((x): x is ResolvedPlace => !!x);
+  const origins = originPlaces
+    .map((x) => x.r)
+    .filter((x): x is ResolvedPlace => !!x)
+    .map((p) => {
+      // "Desde México" = desde su ciudad/aeropuerto principal, no desde todos los aeropuertos del país.
+      if (p.via !== "country") return p;
+      const main = p.airports[0]!;
+      const metro = findMetroByAirport(main);
+      const ap = getAirport(main)!;
+      const city: ResolvedPlace = metro
+        ? { label: metro.name, lat: metro.lat, lon: metro.lon, country: metro.country, airports: metro.airports, metro, via: "metro", optional: p.optional }
+        : { label: ap.city || main, lat: ap.lat, lon: ap.lon, country: ap.country, airports: [main], via: "iata", optional: p.optional };
+      notices.push(`Entiendo «${p.label}» como salida desde ${city.label}. Si sales de otra ciudad, dímelo.`);
+      return city;
+    });
   if (!origins.length) throw new SearchError(`No he encontrado el lugar de origen${unresolved.length ? ` «${unresolved.join(", ")}»` : ""}. Prueba con una ciudad o un código de aeropuerto (p. ej. MEX).`);
   if (unresolved.length) notices.push(`No he reconocido: ${unresolved.join(", ")}.`);
 
@@ -183,7 +197,10 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
     const code = metro && !q.constraints.onlyAirports.length ? metro.code : d.iata;
     destCodes.set(code, [...(destCodes.get(code) ?? []), d]);
   }
-  const returnParam = q.tripType === "oneway" ? undefined : (q.return?.month ?? (q.return?.date ? monthOf(q.return.date) : undefined));
+  // Para estancias cortas se pide la vuelta en el mismo mes: así el proveedor devuelve combinaciones que encajan.
+  const shortStay = (stayRange(q)?.max ?? 14) <= 21;
+  const returnParam =
+    q.tripType === "oneway" ? undefined : (q.return?.month ?? (q.return?.date ? monthOf(q.return.date) : shortStay && win.months.length === 1 ? win.months[0] : undefined));
   const calls: Call[] = [];
   if (!destCands.length) {
     for (const o of originCands.filter((c) => c.requested)) {

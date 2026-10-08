@@ -58,6 +58,12 @@ describe("parser por reglas", () => {
     expect(w.query.longWeekends).toBe(true);
   });
 
+  it("prioridades en orden de mención y 'prioriza X' delante", () => {
+    expect(parse("vuelos comodos y baratos de Madrid a Roma").query.priorities).toEqual(["comfort", "price"]);
+    expect(parse("lo mas barato posible y lo mas comodo posible, pero prioriza lo barato, de Madrid a Roma").query.priorities).toEqual(["price", "comfort"]);
+    expect(parse("lo más cómodo y barato pero prioriza la comodidad, de Madrid a Roma").query.priorities[0]).toBe("comfort");
+  });
+
   it("pregunta solo lo imprescindible", () => {
     const r = parse("quiero ir a Tokio en marzo");
     expect(r.questions).toHaveLength(1);

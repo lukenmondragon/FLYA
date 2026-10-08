@@ -43,6 +43,15 @@ describe("motor de búsqueda (mock)", () => {
     for (const o of out.primary) expect(o.destinationTransfer!.distanceKm).toBeLessThan(80);
   });
 
+  it("país como origen = su ciudad principal (no todos sus aeropuertos)", async () => {
+    const q = parseWithRules("desde mexico a españa en diciembre una semana", { now }).query;
+    const out = await runSearch(q, newMetrics());
+    const requested = out.origins.filter((o) => o.requested).map((o) => o.iata);
+    expect(requested).toEqual(["MEX", "NLU"]);
+    expect(out.origins.map((o) => o.iata)).not.toContain("PVR");
+    expect(out.notices.join(" ")).toMatch(/Ciudad de México/);
+  });
+
   it("si nada cumple la estancia pedida, relaja y avisa en vez de no mostrar nada", async () => {
     const q = parseWithRules("desde Madrid a Roma en noviembre, 40 días", { now }).query;
     const out = await runSearch(q, newMetrics());
