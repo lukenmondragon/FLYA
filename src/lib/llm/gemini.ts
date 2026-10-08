@@ -1,5 +1,5 @@
 import "server-only";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
 import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
@@ -28,11 +28,13 @@ export class GeminiLLM implements LLMProvider {
       // Si el modelo rechaza el esquema, se repite en modo JSON con el esquema en las instrucciones.
       // La salida se valida igualmente con Zod.
       log.warn("Gemini: reintento sin esquema estructurado", { error: String(e).slice(0, 300) });
-      return this.generate(`${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user);
+      return this.generate(`${system}\n\nResponde SOLO con un objeto JSON que cumpla este JSON Schema:\n${JSON.stringify(jsonSchema)}`, user, undefined, false);
     }
   }
 
-  private async generate(system: string, user: string, jsonSchema?: unknown): Promise<{ json: unknown; usage: LlmUsage }> {
+  private async generate(system: string, user: string, jsonSchema?: unknown, tuneThinking = true): Promise<{ json: unknown; usage: LlmUsage }> {
+    // Extracción sencilla: el mínimo razonamiento posible. Gemini 2.x usa presupuesto; 3.x, nivel.
+    const thinkingConfig = !tuneThinking ? undefined : this.model.startsWith("gemini-2") ? { thinkingBudget: 0 } : { thinkingLevel: ThinkingLevel.MINIMAL };
     const res = await this.ai.models.generateContent({
       model: this.model,
       contents: user,
@@ -42,7 +44,7 @@ export class GeminiLLM implements LLMProvider {
         responseMimeType: "application/json",
         ...(jsonSchema ? { responseJsonSchema: jsonSchema } : {}),
         temperature: 0.1,
-        thinkingConfig: { thinkingBudget: 0 },
+        ...(thinkingConfig ? { thinkingConfig } : {}),
         abortSignal: AbortSignal.timeout(20_000),
       },
     });

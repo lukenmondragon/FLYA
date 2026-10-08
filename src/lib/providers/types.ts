@@ -14,6 +14,8 @@ export interface ProviderRequest {
   adults: number;
   /** Moneda solicitada al proveedor (luego se convierte igualmente). */
   currency: string;
+  /** País del usuario (ISO2 en minúsculas): algunos proveedores tienen datos por mercado. */
+  market?: string;
 }
 
 export interface FlightProvider {

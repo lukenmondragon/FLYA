@@ -163,6 +163,11 @@ async function createStore(): Promise<Store> {
   const url = env().DATABASE_URL;
   try {
     if (url === "memory:") return new MemoryStore();
+    // En Vercel el disco es de solo lectura: sin DATABASE_URL configurada se usa memoria.
+    if (url.startsWith("file:") && process.env.VERCEL) {
+      log.info("Sin DATABASE_URL en Vercel: caché en memoria (configura Postgres para persistir)");
+      return new MemoryStore();
+    }
     if (url.startsWith("postgres://") || url.startsWith("postgresql://")) {
       const { default: postgres } = await import("postgres");
       const { drizzle } = await import("drizzle-orm/postgres-js");

@@ -118,7 +118,9 @@ export class TravelpayoutsProvider implements FlightProvider {
     });
     if (req.destination) params.set("destination", req.destination);
     if (!req.oneWay && req.return) params.set("return_at", req.return);
-    if (this.opts.market) params.set("market", this.opts.market);
+    // Los precios en caché se agrupan por mercado: el del país de origen suele tener más datos de sus rutas.
+    const market = this.opts.market ?? req.market;
+    if (market) params.set("market", market);
 
     const json = await withRetry(async () => {
       const res = await fetch(`${API}?${params}`, {

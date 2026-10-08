@@ -188,7 +188,7 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
   if (!destCands.length) {
     for (const o of originCands.filter((c) => c.requested)) {
       for (const month of win.months) {
-        calls.push({ req: { origin: o.iata, departure: month, return: returnParam, oneWay: q.tripType === "oneway", directOnly: q.constraints.directOnly, adults: q.passengers.adults + q.passengers.children, currency: provider.isDemo ? "USD" : displayCurrency }, requested: true, label: `${o.iata}→cualquier sitio` });
+        calls.push({ req: { origin: o.iata, departure: month, return: returnParam, oneWay: q.tripType === "oneway", directOnly: q.constraints.directOnly, adults: q.passengers.adults + q.passengers.children, currency: provider.isDemo ? "USD" : displayCurrency, market: homeCountry.toLowerCase() }, requested: true, label: `${o.iata}→cualquier sitio` });
       }
     }
   }
@@ -197,7 +197,7 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
     for (const [code, ds] of destCodes) {
       for (const month of win.months) {
         calls.push({
-          req: { origin: o.iata, destination: code, departure: month, return: returnParam, oneWay: q.tripType === "oneway", directOnly: q.constraints.directOnly, adults: q.passengers.adults + q.passengers.children, currency: provider.isDemo ? "USD" : displayCurrency },
+          req: { origin: o.iata, destination: code, departure: month, return: returnParam, oneWay: q.tripType === "oneway", directOnly: q.constraints.directOnly, adults: q.passengers.adults + q.passengers.children, currency: provider.isDemo ? "USD" : displayCurrency, market: homeCountry.toLowerCase() },
           requested: o.requested && ds.some((d) => d.requested),
           label: `${o.iata}→${code}`,
         });
@@ -347,7 +347,14 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
 
   // 8. Filtrar por restricciones y fechas; matriz de fechas sobre el conjunto sin filtrar por fecha.
   const matchWin = { from: win.from, to: win.to };
-  const filtered = analyzed.filter((o) => offerMatches(o, q, matchWin));
+  let filtered = analyzed.filter((o) => offerMatches(o, q, matchWin));
+  // Con precios en caché a veces no hay nada con la duración o fechas exactas: se relaja y se avisa.
+  if (!filtered.length && analyzed.length) {
+    const relaxed: SearchQuery = { ...q, stayDays: undefined, longWeekends: false, return: undefined };
+    filtered = analyzed.filter((o) => offerMatches(o, relaxed, matchWin));
+    if (!filtered.length) filtered = analyzed.filter((o) => offerMatches(o, relaxed, { from: todayISO(), to: "9999" }));
+    if (filtered.length) notices.push("No hay precios que cumplan exactamente tus fechas o duración de estancia; te enseño los más cercanos disponibles.");
+  }
   const matrixBase = analyzed.filter((o) => offerMatches(o, q, { from: "0000", to: "9999" }));
   const dateMatrix = buildDateMatrix(matrixBase, win.anchor);
 

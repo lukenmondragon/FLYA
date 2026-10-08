@@ -43,6 +43,13 @@ describe("motor de búsqueda (mock)", () => {
     for (const o of out.primary) expect(o.destinationTransfer!.distanceKm).toBeLessThan(80);
   });
 
+  it("si nada cumple la estancia pedida, relaja y avisa en vez de no mostrar nada", async () => {
+    const q = parseWithRules("desde Madrid a Roma en noviembre, 40 días", { now }).query;
+    const out = await runSearch(q, newMetrics());
+    expect(out.primary.length).toBeGreaterThan(0);
+    expect(out.notices.join(" ")).toMatch(/más cercanos disponibles/);
+  });
+
   it("refinamiento 'solo directos' filtra escalas", async () => {
     const base = parseWithRules("desde Madrid a Barcelona en noviembre", { now }).query;
     const q = parseWithRules("ahora solo directos", { now, previous: base }).query;
