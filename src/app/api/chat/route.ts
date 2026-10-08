@@ -2,6 +2,7 @@ import { z } from "zod";
 import { SearchQuerySchema } from "@/lib/schema/query";
 import type { ChatEvent } from "@/lib/schema/api";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
+import { requireAccess } from "@/lib/session";
 import { interpret } from "@/lib/llm";
 import { explain } from "@/lib/llm/explain";
 import { runSearch, SearchError } from "@/lib/search/engine";
@@ -22,6 +23,8 @@ const BodySchema = z.object({
  * (un ChatEvent por línea) para mostrar progreso mientras se consulta al proveedor.
  */
 export async function POST(req: Request) {
+  const access = await requireAccess();
+  if (!access.ok) return access.response;
   const ip = clientIp(req.headers);
   const rl = await checkRateLimit(ip);
   if (!rl.ok) return Response.json({ error: rl.message }, { status: 429, headers: { "Retry-After": String(rl.retryAfter) } });

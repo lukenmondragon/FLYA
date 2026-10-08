@@ -3,6 +3,7 @@ import { getLLM } from "@/lib/llm";
 import { getStore } from "@/lib/db/store";
 import { checkRateLimit, clientIp } from "@/lib/rateLimit";
 import { todayISO } from "@/lib/util/dates";
+import { requireAccess } from "@/lib/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
  * /api/health?llm=1 hace además una llamada de prueba al LLM y devuelve el error si falla.
  */
 export async function GET(req: Request) {
+  const access = await requireAccess();
+  if (!access.ok) return access.response;
   const provider = getFlightProvider();
   const llm = getLLM();
   const store = await getStore();

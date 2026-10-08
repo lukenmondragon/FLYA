@@ -62,7 +62,7 @@ function Thinking({ text, progress }: { text?: string; progress?: { done: number
   );
 }
 
-export function Chat({ adsEnabled }: { adsEnabled: boolean }) {
+export function Chat({ adsEnabled, userEmail, logout }: { adsEnabled: boolean; userEmail?: string; logout?: () => Promise<void> }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -151,11 +151,20 @@ export function Chat({ adsEnabled }: { adsEnabled: boolean }) {
         <button onClick={reset} className="font-serif text-xl text-accent" aria-label={t.newSearch}>
           {t.appName}
         </button>
-        {!empty && (
-          <button onClick={reset} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink">
-            {t.newSearch}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!empty && (
+            <button onClick={reset} className="rounded-full border border-line px-3 py-1 text-sm text-muted hover:text-ink">
+              {t.newSearch}
+            </button>
+          )}
+          {logout && (
+            <form action={logout}>
+              <button type="submit" title={userEmail} className="rounded-full px-2 py-1 text-sm text-muted hover:text-ink">
+                Salir
+              </button>
+            </form>
+          )}
+        </div>
       </header>
 
       <main className={`flex-1 ${empty ? "flex flex-col justify-center" : ""}`}>

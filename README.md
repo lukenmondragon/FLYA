@@ -34,8 +34,11 @@ Copia `.env.example` a `.env.local` y rellena lo que necesites:
 | `TRAVELPAYOUTS_TOKEN`, `TRAVELPAYOUTS_MARKER` | Precios reales (Travelpayouts / Aviasales) |
 | `ANTHROPIC_API_KEY` o `GEMINI_API_KEY` | Interpretación de las búsquedas |
 | `DATABASE_URL` | SQLite en local; Postgres en producción |
+| `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `ALLOWED_EMAILS` | Acceso privado con Google: solo entran los correos de la lista |
 
 El resto de opciones están comentadas en `.env.example`.
+
+Sin las variables de acceso, la app queda abierta en desarrollo y bloqueada en producción.
 
 ## Despliegue
 
