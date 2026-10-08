@@ -1,0 +1,58 @@
+import "server-only";
+import { GoogleGenAI } from "@google/genai";
+import { z } from "zod";
+import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
+import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
+import { userParseMessage, type LLMProvider, type LlmUsage, type ParseInput } from "./types";
+
+// Precio orientativo de pago de Gemini Flash (USD / millón de tokens). En el plan gratuito el coste es 0.
+const PRICE = { input: 0.3, output: 2.5, cached: 0.075 };
+
+export class GeminiLLM implements LLMProvider {
+  readonly id = "gemini" as const;
+  private ai: GoogleGenAI;
+
+  constructor(
+    apiKey: string,
+    readonly model: string,
+  ) {
+    this.ai = new GoogleGenAI({ apiKey });
+  }
+
+  private async call(system: string, user: string, schema: z.ZodType): Promise<{ json: unknown; usage: LlmUsage }> {
+    const res = await this.ai.models.generateContent({
+      model: this.model,
+      contents: user,
+      config: {
+        // Gemini aplica caché implícita a prefijos repetidos (el system prompt es estable).
+        systemInstruction: system,
+        responseMimeType: "application/json",
+        responseJsonSchema: z.toJSONSchema(schema),
+        temperature: 0.1,
+        thinkingConfig: { thinkingBudget: 0 },
+        abortSignal: AbortSignal.timeout(20_000),
+      },
+    });
+    const text = res.text;
+    if (!text) throw new Error("Respuesta vacía de Gemini");
+    const u = res.usageMetadata;
+    const cached = u?.cachedContentTokenCount ?? 0;
+    const input = u?.promptTokenCount ?? 0;
+    const output = u?.candidatesTokenCount ?? 0;
+    return {
+      json: JSON.parse(text),
+      usage: { inputTokens: input, outputTokens: output, cachedTokens: cached, costUsd: ((input - cached) * PRICE.input + cached * PRICE.cached + output * PRICE.output) / 1e6 },
+    };
+  }
+
+  async parse(input: ParseInput) {
+    const { json, usage } = await this.call(PARSE_SYSTEM, userParseMessage(input), LlmParseSchema);
+    return { result: llmToParseResult(LlmParseSchema.parse(json)), usage };
+  }
+
+  async explain(context: string, extraInstruction?: string) {
+    const user = extraInstruction ? `${context}\n\nATENCIÓN: ${extraInstruction}` : context;
+    const { json, usage } = await this.call(EXPLAIN_SYSTEM, user, LlmExplainSchema);
+    return { data: LlmExplainSchema.parse(json), usage };
+  }
+}

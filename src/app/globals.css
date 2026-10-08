@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+/* Paleta (contraste comprobado, WCAG AA):
+   fondo #323438 · tarjeta #3A3D41 · turquesa #5EEAD4 (8,4:1 / 7,4:1) · texto #ECEAE4 (10,4:1) · secundario #B4B9BF (6,3:1) */
+@theme {
+  --color-bg: #323438;
+  --color-card: #3a3d41;
+  --color-card-2: #43464b;
+  --color-line: #50545a;
+  --color-ink: #eceae4;
+  --color-muted: #b4b9bf;
+  --color-accent: #5eead4;
+  --color-accent-ink: #14201f;
+  --color-warn: #f5b971;
+  --color-danger: #f28b82;
+  --font-serif: "Newsreader", ui-serif, Georgia, serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+@keyframes pulse-dot {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+.dot { animation: pulse-dot 1.2s infinite ease-in-out; }
+.dot:nth-child(2) { animation-delay: 0.15s; }
+.dot:nth-child(3) { animation-delay: 0.3s; }
