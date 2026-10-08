@@ -2,7 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
-import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
+import { LlmExplainSchema, LlmParseSchema, llmToParseResult, parseLlmOutput } from "./schema";
 import { userParseMessage, type LLMProvider, type LlmUsage, type ParseInput } from "./types";
 
 // Precios por millón de tokens (USD) de Claude Haiku 5.5 con prompts ≤100K tokens.
@@ -45,7 +45,7 @@ export class AnthropicLLM implements LLMProvider {
 
   async parse(input: ParseInput) {
     const { parsed, usage } = await this.call<import("./schema").LlmParse>(PARSE_SYSTEM, userParseMessage(input), zodOutputFormat(LlmParseSchema), 2000);
-    return { result: llmToParseResult(LlmParseSchema.parse(parsed)), usage };
+    return { result: llmToParseResult(parseLlmOutput(parsed)), usage };
   }
 
   async explain(context: string, extraInstruction?: string) {

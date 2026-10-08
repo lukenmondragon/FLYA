@@ -55,6 +55,33 @@ export const LlmParseSchema = z.object({
 });
 export type LlmParse = z.infer<typeof LlmParseSchema>;
 
+const PLACE_DEFAULTS = { country: null, iata: [], lat: null, lon: null, optional: false };
+const PARSE_DEFAULTS: LlmParse = {
+  is_refinement: false, origins: [], destinations: [], destination_mode: "specific", destination_tags: [], trip_type: "roundtrip",
+  departure_date: null, departure_month: null, flex_days: 0, return_date: null, return_month: null, stay_min_days: null, stay_max_days: null,
+  long_weekends: false, adults: 1, children: 0, infants: 0, budget_amount: null, budget_currency: null, currency: null, priorities: ["price"],
+  direct_only: false, max_stops: null, max_layover_hours: null, baggage_included: false, avoid_overnight_layovers: false,
+  preferred_airlines: [], excluded_airlines: [], only_airports: [], excluded_airports: [], nearby_origins: true, nearby_destinations: false,
+  radius_km: 300, allow_foreign_origins: true, assumptions: [], questions: [],
+};
+
+/**
+ * Valida la salida del LLM tolerando campos ausentes o nulos (algunos modelos omiten los que no aplican):
+ * se completan con los valores por defecto antes de validar.
+ */
+export function parseLlmOutput(json: unknown): LlmParse {
+  const o = (json && typeof json === "object" ? json : {}) as Record<string, unknown>;
+  const clean = Object.fromEntries(Object.entries(o).filter(([k, v]) => v !== null || (PARSE_DEFAULTS as Record<string, unknown>)[k] === null));
+  const place = (p: unknown) => ({ ...PLACE_DEFAULTS, ...(typeof p === "string" ? { name: p } : (p as object)) });
+  const merged = {
+    ...PARSE_DEFAULTS,
+    ...clean,
+    origins: Array.isArray(o.origins) ? o.origins.map(place) : [],
+    destinations: Array.isArray(o.destinations) ? o.destinations.map(place) : [],
+  };
+  return LlmParseSchema.parse(merged);
+}
+
 const iataOk = (s: string) => /^[A-Z]{3}$/.test(s);
 const clampInt = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(n)));
 

@@ -2,7 +2,7 @@ import "server-only";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { z } from "zod";
 import { EXPLAIN_SYSTEM, PARSE_SYSTEM } from "./prompts";
-import { LlmExplainSchema, LlmParseSchema, llmToParseResult } from "./schema";
+import { LlmExplainSchema, LlmParseSchema, llmToParseResult, parseLlmOutput } from "./schema";
 import { log } from "../log";
 import { userParseMessage, type LLMProvider, type LlmUsage, type ParseInput } from "./types";
 
@@ -94,7 +94,7 @@ export class GeminiLLM implements LLMProvider {
 
   async parse(input: ParseInput) {
     const { json, usage } = await this.call(PARSE_SYSTEM, userParseMessage(input), LlmParseSchema);
-    return { result: llmToParseResult(LlmParseSchema.parse(json)), usage };
+    return { result: llmToParseResult(parseLlmOutput(json)), usage };
   }
 
   async explain(context: string, extraInstruction?: string) {

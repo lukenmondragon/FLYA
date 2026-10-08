@@ -35,7 +35,7 @@ export async function interpret(message: string, previous: SearchQuery | undefin
       log.info("LLM parse", { provider: llm.id, model: llm.model, in: usage.inputTokens, out: usage.outputTokens, cached: usage.cachedTokens, costUsd: Number(usage.costUsd.toFixed(6)) });
       return { result, parser: `${llm.id}:${llm.model}` };
     } catch (e) {
-      log.warn("LLM parse falló; uso reglas", { provider: llm.id, error: String(e) });
+      log.warn("LLM parse falló; uso reglas", { provider: llm.id, error: String(e).slice(0, 600) });
     }
   }
   return { result: parseWithRules(message, { previous }), parser: "reglas" };

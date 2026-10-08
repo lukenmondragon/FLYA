@@ -161,3 +161,16 @@ describe("salida del LLM → esquema interno", () => {
     expect(r.query.constraints.onlyAirports).toEqual(["NRT"]);
   });
 });
+
+describe("salida del LLM incompleta", () => {
+  it("completa campos ausentes o nulos en vez de descartar la respuesta", async () => {
+    const { parseLlmOutput } = await import("@/lib/llm/schema");
+    const r = llmToParseResult(parseLlmOutput({ origins: [{ name: "CDMX", iata: ["MEX"] }], destinations: ["España"], departure_month: "2026-12", priorities: null, stay_min_days: 6, stay_max_days: 8 }));
+    expect(r.query.origins[0]).toMatchObject({ name: "CDMX", iata: ["MEX"] });
+    expect(r.query.destinations[0]!.name).toBe("España");
+    expect(r.query.departure.month).toBe("2026-12");
+    expect(r.query.priorities).toEqual(["price"]);
+    expect(r.query.stayDays).toEqual({ min: 6, max: 8 });
+    expect(r.query.tripType).toBe("roundtrip");
+  });
+});

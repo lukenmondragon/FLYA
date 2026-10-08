@@ -197,10 +197,7 @@ export async function runSearch(q: SearchQuery, metrics: SearchMetrics, hooks: E
     const code = metro && !q.constraints.onlyAirports.length ? metro.code : d.iata;
     destCodes.set(code, [...(destCodes.get(code) ?? []), d]);
   }
-  // Para estancias cortas se pide la vuelta en el mismo mes: así el proveedor devuelve combinaciones que encajan.
-  const shortStay = (stayRange(q)?.max ?? 14) <= 21;
-  const returnParam =
-    q.tripType === "oneway" ? undefined : (q.return?.month ?? (q.return?.date ? monthOf(q.return.date) : shortStay && win.months.length === 1 ? win.months[0] : undefined));
+  const returnParam = q.tripType === "oneway" ? undefined : (q.return?.month ?? (q.return?.date ? monthOf(q.return.date) : undefined));
   const calls: Call[] = [];
   if (!destCands.length) {
     for (const o of originCands.filter((c) => c.requested)) {
